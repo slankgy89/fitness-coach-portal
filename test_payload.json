@@ -1,0 +1,21 @@
+{
+  "id": "evt_test",
+  "object": "event",
+  "type": "checkout.session.completed",
+  "api_version": "2024-04-10",
+  "data": {
+    "object": {
+      "id": "cs_test",
+      "object": "checkout.session",
+      "payment_status": "paid",
+      "status": "complete",
+      "client_reference_id": "user_id",
+      "subscription": "sub_test",
+      "metadata": {
+        "plan_id": "plan_test",
+        "user_id": "user_id"
+      },
+      "mode": "subscription"
+    }
+  }
+}
