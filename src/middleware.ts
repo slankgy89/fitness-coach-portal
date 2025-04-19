@@ -130,13 +130,14 @@ export async function middleware(request: NextRequest) {
     console.log(`[Middleware] Access allowed based on role/subscription check: ${allowAccess}`);
 
     // --- Decision Logic ---
-    // If access check failed for a protected route, redirect to /our-plans
-    if (!allowAccess) {
-      console.log('[Middleware] Access denied, redirecting to /our-plans...');
-      const redirectUrl = request.nextUrl.clone();
-      redirectUrl.pathname = '/our-plans';
-      // Preserve original path if needed for post-purchase redirect? Maybe not necessary here.
-      return NextResponse.redirect(redirectUrl);
+    // If access check failed for a protected route (excluding dashboard), redirect to /our-plans
+    if (!allowAccess && pathname !== '/dashboard') {
+        console.log('[Middleware] Access denied (non-dashboard), redirecting to /our-plans...');
+        const redirectUrl = request.nextUrl.clone();
+        redirectUrl.pathname = '/our-plans';
+        return NextResponse.redirect(redirectUrl);
+    } else if (!allowAccess) {
+        console.log('[Middleware] Access denied for dashboard, allowing to proceed to show message.');
     }
     // If access check passed, allow proceeding
     console.log('[Middleware] Access granted, allowing request to proceed.');

@@ -2,8 +2,9 @@ import { createClient } from '@/lib/supabase/server';
 import { redirect } from 'next/navigation';
 import { logout } from '@/app/(auth)/actions';
 import Link from 'next/link';
-import { checkSubscriptionStatus } from '@/lib/supabase/server'; // Import subscription check
+import { checkSubscriptionStatus } from '@/lib/supabase/server';
 import { Button } from '@/components/ui/button'; // Import Button for prompt
+import { revalidatePath } from 'next/cache';
 
 export default async function DashboardPage() {
   const supabase = createClient();
@@ -13,7 +14,7 @@ export default async function DashboardPage() {
   } = await supabase.auth.getUser();
 
   if (!user) {
-    // If no user is logged in, redirect to login
+    console.log("[Dashboard] No user found, redirecting to login.");
     redirect('/login');
   }
 
@@ -25,10 +26,10 @@ export default async function DashboardPage() {
     .single();
 
   // Handle potential error fetching profile (e.g., if trigger failed silently)
-  if (profileError && profileError.code !== 'PGRST116') { // PGRST116 = row not found, which might be okay initially
-      console.error("Error fetching profile:", profileError);
-      // Optionally redirect or show an error message
-  }
+  if (profileError && profileError.code !== 'PGRST116') {
+    console.error("[Dashboard] Error fetching profile:", profileError);
+    // Optionally redirect or show an error message - consider a user-friendly error page
+  } 
 
   const userRole = profile?.role ?? 'client';
   const userName = profile?.first_name ? `${profile.first_name} ${profile.last_name ?? ''}`.trim() : user.email;
@@ -38,11 +39,21 @@ export default async function DashboardPage() {
   // or we might need to pass the role/coach_id if logic differs.
   // For now, assume it checks the user's own subscription if they are a client.
   const hasActiveSubscription = await checkSubscriptionStatus(user.id);
+  console.log(`[Dashboard] User ${user.id} has active subscription: ${hasActiveSubscription}`);
 
-  return (
-    <div className="flex min-h-screen flex-col items-center justify-center p-8">
-      <h1 className="text-3xl font-bold">Welcome, {userName}!</h1>
-      <p className="mt-4 text-muted-foreground">Your Role: {userRole}</p>
+    // For clients without a subscription, display message and redirect
+    if (userRole === 'client' && !hasActiveSubscription) {
+        console.log(`[Dashboard] Client ${user.id} does not have an active subscription. Redirecting...`);
+        redirect('/our-plans'); // Redirect immediately
+    }
+
+    // Revalidate the path to ensure fresh data on subsequent visits
+    revalidatePath('/dashboard');
+
+    return (
+      <div className="flex min-h-screen flex-col items-center justify-center p-8">
+        <h1 className="text-3xl font-bold">Welcome, {userName}!</h1>
+        <p className="mt-4 text-muted-foreground">Your Role: {userRole}</p>
       <p className="mt-6">This is your dashboard.</p>
 
       {/* Role-specific content placeholder */}
@@ -149,26 +160,6 @@ export default async function DashboardPage() {
           {/* Add more links later */}
         </div>
       )}
-
-      {/* Prompt for clients without subscription */}
-      {userRole === 'client' && !hasActiveSubscription && (
-         <div className="mt-8 w-full max-w-lg space-y-6 rounded-lg bg-card p-8 text-center shadow-lg">
-            <h2 className="text-2xl font-bold text-card-foreground">
-              Unlock Your Potential!
-            </h2>
-            <p className="text-lg text-muted-foreground">
-              It looks like an active plan is needed. Please select one below to regain full access and keep progressing!
-            </p>
-            <Link href="/our-plans" passHref>
-              <Button className="mt-4 w-full sm:w-auto">
-                View Our Plans
-              </Button>
-            </Link>
-          </div>
-      )}
-
-
-      {/* Logout Button Form */}
       <form action={logout} className="mt-6">
         <button
           type="submit"
@@ -179,5 +170,5 @@ export default async function DashboardPage() {
       </form>
       {/* Add role-specific content later */}
     </div>
-  );
+    );
 }

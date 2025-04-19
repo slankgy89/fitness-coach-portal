@@ -1,6 +1,7 @@
 import { serve } from 'https://deno.land/std@0.177.0/http/server.ts';
 import Stripe from 'https://esm.sh/stripe@11.1.0?target=deno';
 import { createClient, SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2.5.0';
+import { revalidatePath } from 'https://esm.sh/next/cache';
 
 console.log('Stripe webhook function started'); // Add this line
 
@@ -85,26 +86,9 @@ async function handleCheckoutSession(session: Stripe.Checkout.Session, supabase:
          console.error('[Edge Function DB] CATCH BLOCK: Database operation FAILED:', dbCatchError);
     }
 
-    if (dbOperationSuccessful && supabaseUserId) {
-        console.log(`[Edge Function Revalidate] Triggering revalidation for user: ${supabaseUserId}`);
-        fetch(`${Deno.env.get('APP_SITE_URL')}/api/revalidate-subscription`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                userId: supabaseUserId,
-                secret: Deno.env.get('REVALIDATION_SECRET')
-            })
-        }).then(res => {
-             if (!res.ok) {
-                 res.text().then(text => console.error(`[Edge Function Revalidate] API call failed: ${res.status}, ${text}`));
-             } else {
-                 console.log(`[Edge Function Revalidate] API call successful for user: ${supabaseUserId}`);
-             }
-        }).catch(err => {
-            console.error('[Edge Function Revalidate] Fetch failed:', err);
-        });
-    } else if (!dbOperationSuccessful) {
-         console.log('[Edge Function Revalidate] Skipping revalidation due to DB failure.');
+    if (dbOperationSuccessful && supabaseUserId){
+        console.log(`[Edge Function Revalidate] Revalidating /dashboard for user ${supabaseUserId}`);
+        revalidatePath('/dashboard');
     }
 
     if (!dbOperationSuccessful) {
@@ -146,27 +130,6 @@ async function handleSubscriptionUpdate(subscription: Stripe.Subscription, supab
             console.error('[Edge Function Webhook] Supabase subscription update error:', updateError);
         } else {
             dbOperationSuccessful = true;
-            console.log(`[Edge Function Webhook] Subscription ${subscription.id} updated successfully.`);
-        }
-
-        if (dbOperationSuccessful && supabaseUserId) {
-            console.log(`[Edge Function Revalidate] Triggering revalidation for user: ${supabaseUserId}`);
-        fetch(`${Deno.env.get('APP_SITE_URL')}/api/revalidate-subscription`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                    userId: supabaseUserId,
-                    secret: Deno.env.get('REVALIDATION_SECRET')
-                })
-            }).then(res => {
-                 if (!res.ok) {
-                      res.text().then(text => console.error(`[Edge Function Revalidate] API call failed during update: ${res.status}, ${text}`));
-                 } else {
-                     console.log(`[Edge Function Revalidate] API call successful during update for user: ${supabaseUserId}`);
-                 }
-            }).catch(err => {
-                console.error('[Edge Function Revalidate] Fetch failed during update:', err);
-            });
         } else if (!dbOperationSuccessful) {
              console.log('[Edge Function Revalidate] Skipping revalidation during update due to DB failure.');
         } else if (!supabaseUserId) {
@@ -214,14 +177,8 @@ const webhookSecret = Deno.env.get('STRIPE_WEBHOOK_SECRET');
 
   let event: Stripe.Event;
   try {
-    const webhookSecret = Deno.env.get('STRIPE_WEBHOOK_SECRET');
-    try {
-      event = await stripe.webhooks.constructEvent(body, signature, webhookSecret);
-      console.log(`[Edge Function Webhook] Event constructed successfully. Type: ${event.type}`);
-    } catch (err: any) {
-      console.error(`[Edge Function Webhook Error] Error constructing event: ${err?.message}`, err);
-      return new Response('Webhook error during event construction', { status: 400 });
-    }
+    event = await stripe.webhooks.constructEvent(body, signature, webhookSecret);
+    console.log(`[Edge Function Webhook] Event constructed successfully. Type: ${event.type}`);
   } catch (err: any) {
     console.error(`[Edge Function Webhook Error] Error constructing event: ${err?.message}`, err);
     return new Response('Webhook error during event construction', { status: 400 });
